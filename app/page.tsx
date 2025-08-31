@@ -39,7 +39,7 @@ export default function MQTTControlPanel() {
         mqtt = mqttModule.default || mqttModule
 
         // Replace with your MQTT broker URL
-        const mqttClient = mqtt.connect("ws://localhost:8083/mqtt", {
+        const mqttClient = mqtt.connect("ws://localhost:9001/", {
           clientId: "tank-control-panel-" + Math.random().toString(16).substr(2, 8),
           clean: true,
           connectTimeout: 4000,
