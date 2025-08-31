@@ -19,10 +19,13 @@ interface SwitchState {
   pump: boolean
 }
 
+type Mode = 'manual' | 'automatic'
+
 export default function MQTTControlPanel() {
   const [client, setClient] = useState<any>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [tankLevel, setTankLevel] = useState(0)
+  const [mode, setMode] = useState<Mode>('manual')
   const [switches, setSwitches] = useState<SwitchState>({
     power1: false,
     power2: false,
@@ -111,6 +114,11 @@ export default function MQTTControlPanel() {
   )
 
   const handleSwitchChange = (switchName: keyof SwitchState, checked: boolean) => {
+    // Don't allow switch changes in automatic mode
+    if (mode === 'automatic') {
+      return
+    }
+
     setSwitches((prev) => ({ ...prev, [switchName]: checked }))
 
     const topicMap = {
@@ -121,6 +129,12 @@ export default function MQTTControlPanel() {
     }
 
     publishSwitchState(topicMap[switchName], checked)
+  }
+
+  const handleModeChange = (isAutomatic: boolean) => {
+    const newMode: Mode = isAutomatic ? 'automatic' : 'manual'
+    setMode(newMode)
+    client.publish('/mode', newMode);
   }
 
   const getTankLevelColor = (level: number) => {
@@ -146,6 +160,46 @@ export default function MQTTControlPanel() {
             <span className="text-sm text-blue-700">MQTT {isConnected ? "Connected" : "Disconnected"}</span>
           </div>
         </div>
+
+        {/* Mode Control */}
+        <Card className="border-blue-200 shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-purple-500 to-blue-500 text-white">
+            <CardTitle className="flex items-center gap-2">
+              <Power className="w-5 h-5" />
+              Control Mode
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className={`w-3 h-3 rounded-full ${mode === 'automatic' ? 'bg-purple-500' : 'bg-blue-500'}`} />
+                <div>
+                  <span className="font-medium text-gray-900 block">
+                    {mode === 'automatic' ? 'Automatic Mode' : 'Manual Mode'}
+                  </span>
+                  <span className="text-sm text-gray-600">
+                    {mode === 'automatic' 
+                      ? 'System controls automatically' 
+                      : 'Manual control enabled'
+                    }
+                  </span>
+                </div>
+              </div>
+              <Switch
+                checked={mode === 'automatic'}
+                onCheckedChange={handleModeChange}
+                disabled={!isConnected}
+              />
+            </div>
+            {mode === 'automatic' && (
+              <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  ⚠️ In automatic mode, manual controls are disabled for safety.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Tank Level Monitor */}
         <Card className="border-blue-200 shadow-lg">
@@ -198,15 +252,30 @@ export default function MQTTControlPanel() {
             </CardHeader>
             <CardContent className="p-6 space-y-4">
               {(["power1", "power2", "power3"] as const).map((power) => (
-                <div key={power} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                <div key={power} className={`flex items-center justify-between p-3 rounded-lg ${
+                  mode === 'automatic' ? 'bg-gray-100' : 'bg-blue-50'
+                }`}>
                   <div className="flex items-center gap-3">
-                    <Power className={`w-5 h-5 ${switches[power] ? "text-green-600" : "text-gray-400"}`} />
-                    <span className="font-medium text-blue-900 capitalize">{power.replace("power", "Power ")}</span>
+                    <Power className={`w-5 h-5 ${
+                      switches[power] 
+                        ? mode === 'automatic' ? "text-gray-500" : "text-green-600"
+                        : "text-gray-400"
+                    }`} />
+                    <span className={`font-medium capitalize ${
+                      mode === 'automatic' ? 'text-gray-500' : 'text-blue-900'
+                    }`}>
+                      {power.replace("power", "Power ")}
+                    </span>
+                    {mode === 'automatic' && (
+                      <Badge variant="secondary" className="text-xs">
+                        Auto
+                      </Badge>
+                    )}
                   </div>
                   <Switch
                     checked={switches[power]}
                     onCheckedChange={(checked) => handleSwitchChange(power, checked)}
-                    disabled={!isConnected}
+                    disabled={!isConnected || mode === 'automatic'}
                   />
                 </div>
               ))}
@@ -222,18 +291,39 @@ export default function MQTTControlPanel() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6">
-              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
+              <div className={`flex items-center justify-between p-4 rounded-lg ${
+                mode === 'automatic' ? 'bg-gray-100' : 'bg-blue-50'
+              }`}>
                 <div className="flex items-center gap-3">
-                  <Droplets className={`w-6 h-6 ${switches.pump ? "text-blue-600" : "text-gray-400"}`} />
+                  <Droplets className={`w-6 h-6 ${
+                    switches.pump 
+                      ? mode === 'automatic' ? "text-gray-500" : "text-blue-600"
+                      : "text-gray-400"
+                  }`} />
                   <div>
-                    <span className="font-medium text-blue-900 block">Water Pump</span>
-                    <span className="text-sm text-blue-600">{switches.pump ? "Running" : "Stopped"}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-medium block ${
+                        mode === 'automatic' ? 'text-gray-500' : 'text-blue-900'
+                      }`}>
+                        Water Pump
+                      </span>
+                      {mode === 'automatic' && (
+                        <Badge variant="secondary" className="text-xs">
+                          Auto
+                        </Badge>
+                      )}
+                    </div>
+                    <span className={`text-sm ${
+                      mode === 'automatic' ? 'text-gray-500' : 'text-blue-600'
+                    }`}>
+                      {switches.pump ? "Running" : "Stopped"}
+                    </span>
                   </div>
                 </div>
                 <Switch
                   checked={switches.pump}
                   onCheckedChange={(checked) => handleSwitchChange("pump", checked)}
-                  disabled={!isConnected}
+                  disabled={!isConnected || mode === 'automatic'}
                 />
               </div>
             </CardContent>
@@ -243,7 +333,7 @@ export default function MQTTControlPanel() {
         {/* Status Footer */}
         <Card className="border-blue-200 shadow-lg">
           <CardContent className="p-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
               <div>
                 <div className="text-2xl font-bold text-blue-600">{Object.values(switches).filter(Boolean).length}</div>
                 <div className="text-sm text-blue-700">Active Systems</div>
@@ -261,6 +351,12 @@ export default function MQTTControlPanel() {
               <div>
                 <div className="text-2xl font-bold text-blue-600">{switches.pump ? "ON" : "OFF"}</div>
                 <div className="text-sm text-blue-700">Pump Status</div>
+              </div>
+              <div>
+                <div className={`text-2xl font-bold ${mode === 'automatic' ? "text-purple-600" : "text-blue-600"}`}>
+                  {mode === 'automatic' ? "AUTO" : "MANUAL"}
+                </div>
+                <div className="text-sm text-blue-700">Control Mode</div>
               </div>
             </div>
           </CardContent>
