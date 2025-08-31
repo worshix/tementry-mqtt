@@ -58,6 +58,12 @@ export default function MQTTControlPanel() {
               console.error("Failed to subscribe to /level:", err)
             }
           })
+          // Subscribe to power control topics for automatic mode
+          mqttClient.subscribe(["/power1", "/power2", "/power3", "/pump"], (err) => {
+            if (err) {
+              console.error("Failed to subscribe to power topics:", err)
+            }
+          })
         })
 
         mqttClient.on("message", (topic: string, message: Buffer) => {
@@ -68,6 +74,21 @@ export default function MQTTControlPanel() {
             const level = Number.parseFloat(messageStr)
             if (!isNaN(level)) {
               setTankLevel(Math.max(0, Math.min(100, level)))
+            }
+          } else if (topic === "/power1" || topic === "/power2" || topic === "/power3" || topic === "/pump") {
+            // Only update switches from incoming messages in automatic mode
+            const isOn = messageStr.toLowerCase() === "on"
+            const switchMap: { [key: string]: keyof SwitchState } = {
+              "/power1": "power1",
+              "/power2": "power2", 
+              "/power3": "power3",
+              "/pump": "pump"
+            }
+            
+            const switchName = switchMap[topic]
+            if (switchName) {
+              setSwitches((prev) => ({ ...prev, [switchName]: isOn }))
+              console.log(`Updated ${switchName} to ${isOn ? 'on' : 'off'} from incoming message`)
             }
           }
         })
